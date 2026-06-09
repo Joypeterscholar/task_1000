@@ -1,0 +1,171 @@
+name: CI + Deploy — Simple Books API
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  NODE_VERSION:   "20"
+  API_PORT:       "4004"
+  JMETER_VERSION: "5.6.3"
+  MAX_ERROR_RATE: "1"
+  MAX_P95_MS:     "500"
+
+jobs:
+
+  # ══════════════════════════════════════
+  #  1 — Jest unit tests
+  # ══════════════════════════════════════
+  jest:
+    name: "🧪 Jest Tests"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "${{ env.NODE_VERSION }}" }
+      - run: npm install
+      - run: npm test
+
+  # ══════════════════════════════════════
+  #  2 — Postman / Newman
+  # ══════════════════════════════════════
+  postman:
+    name: "📬 Postman (Newman)"
+    runs-on: ubuntu-latest
+    needs: jest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "${{ env.NODE_VERSION }}" }
+      - run: npm install
+      - name: Start API
+        run: |
+          PORT=${{ env.API_PORT }} node src/server.js &
+          echo "API_PID=$!" >> $GITHUB_ENV
+          for i in $(seq 1 15); do
+            curl -sf http://localhost:${{ env.API_PORT }}/health && break
+            sleep 2
+          done
+      - name: Run Newman
+        id: newman
+        run: |
+          npm install -g newman newman-reporter-htmlextra
+          mkdir -p results
+          newman run postman/simple-books.postman_collection.json \
+            --env-var "base_url=http://localhost:${{ env.API_PORT }}" \
+            --reporters cli,htmlextra \
+            --reporter-htmlextra-export results/postman-report.html
+      - name: File Mantis bug on failure
+        if: failure() && steps.newman.outcome == 'failure'
+        run: |
+          [ -z "${{ secrets.MANTIS_URL }}" ] && echo "Mantis not configured" && exit 0
+          curl -s -X POST "${{ secrets.MANTIS_URL }}/api/rest/issues" \
+            -H "Authorization: ${{ secrets.MANTIS_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"summary\":\"Postman tests failed (${GITHUB_SHA:0:7})\",\"description\":\"Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID\",\"category\":{\"name\":\"API Functional\"},\"project\":{\"id\":${{ secrets.MANTIS_PROJECT_ID }}},\"severity\":{\"name\":\"major\"},\"priority\":{\"name\":\"high\"}}"
+      - name: Upload Postman report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: postman-report
+          path: results/postman-report.html
+          retention-days: 14
+      - if: always()
+        run: kill $API_PID || true
+
+  # ══════════════════════════════════════
+  #  3 — JMeter load test
+  # ══════════════════════════════════════
+  jmeter:
+    name: "⚡ JMeter Load Test"
+    runs-on: ubuntu-latest
+    needs: postman
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "${{ env.NODE_VERSION }}" }
+      - run: npm install
+      - name: Start API
+        run: |
+          PORT=${{ env.API_PORT }} node src/server.js &
+          echo "API_PID=$!" >> $GITHUB_ENV
+          for i in $(seq 1 15); do
+            curl -sf http://localhost:${{ env.API_PORT }}/health && break
+            sleep 2
+          done
+      - name: Install JMeter
+        run: |
+          wget -q https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-${{ env.JMETER_VERSION }}.tgz
+          tar -xzf apache-jmeter-${{ env.JMETER_VERSION }}.tgz
+          echo "$GITHUB_WORKSPACE/apache-jmeter-${{ env.JMETER_VERSION }}/bin" >> $GITHUB_PATH
+      - name: Run JMeter
+        run: |
+          mkdir -p results/jmeter-html
+          jmeter -n \
+            -t jmeter/books-load-test.jmx \
+            -l results/results.jtl \
+            -e -o results/jmeter-html \
+            -JHOST=localhost -JPORT=${{ env.API_PORT }} \
+            -JUSERS=10 -JRAMP=10 -JLOOPS=5
+      - name: Check thresholds
+        id: threshold
+        run: |
+          python3 - <<'EOF'
+          import csv, sys
+          max_err = float("${{ env.MAX_ERROR_RATE }}")
+          max_p95 = float("${{ env.MAX_P95_MS }}")
+          latencies, errors, total = [], 0, 0
+          with open("results/results.jtl") as f:
+              for row in csv.DictReader(f):
+                  total += 1
+                  latencies.append(int(row["elapsed"]))
+                  if row["success"].lower() != "true": errors += 1
+          err_rate = (errors/total)*100
+          latencies.sort()
+          p95 = latencies[int(len(latencies)*0.95)]
+          print(f"Requests: {total} | Errors: {err_rate:.1f}% | p95: {p95}ms")
+          sys.exit(1 if (err_rate > max_err or p95 > max_p95) else 0)
+          EOF
+      - name: File Mantis bug on breach
+        if: failure() && steps.threshold.outcome == 'failure'
+        run: |
+          [ -z "${{ secrets.MANTIS_URL }}" ] && echo "Mantis not configured" && exit 0
+          curl -s -X POST "${{ secrets.MANTIS_URL }}/api/rest/issues" \
+            -H "Authorization: ${{ secrets.MANTIS_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"summary\":\"JMeter threshold breach (${GITHUB_SHA:0:7})\",\"description\":\"Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID\",\"category\":{\"name\":\"Performance\"},\"project\":{\"id\":${{ secrets.MANTIS_PROJECT_ID }}},\"severity\":{\"name\":\"minor\"},\"priority\":{\"name\":\"normal\"}}"
+      - name: Upload JMeter report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jmeter-report
+          path: results/jmeter-html/
+          retention-days: 14
+      - if: always()
+        run: kill $API_PID || true
+
+  # ══════════════════════════════════════
+  #  4 — Deploy to Render
+  #  Only on push to main, all tests pass
+  # ══════════════════════════════════════
+  deploy:
+    name: "🚀 Deploy → Render"
+    runs-on: ubuntu-latest
+    needs: [jest, postman, jmeter]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Trigger Render deploy
+        run: |
+          curl -s -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
+          echo "✅ Deploy triggered"
+      - name: Wait for live
+        run: |
+          for i in $(seq 1 20); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${{ secrets.RENDER_API_URL }}/health" || echo 000)
+            echo "Attempt $i — HTTP $STATUS"
+            [ "$STATUS" = "200" ] && echo "✅ Live at ${{ secrets.RENDER_API_URL }}" && exit 0
+            sleep 15
+          done

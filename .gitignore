@@ -1,0 +1,10 @@
+node_modules/
+coverage/
+results/
+*.jtl
+.env
+apache-jmeter-*/
+*.tgz
+.DS_Store
+.env
+.env.local
