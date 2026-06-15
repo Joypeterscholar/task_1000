@@ -1,0 +1,28 @@
+version: "3.8"
+
+services:
+  mantisdb:
+    image: mariadb:11
+    container_name: mantisdb
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: mantisbt
+      MYSQL_USER: mantis
+      MYSQL_PASSWORD: mantis
+    ports:
+      - "3307:3306"
+
+  mantisbt:
+    image: vimagick/mantisbt
+    container_name: mantisbt
+    restart: always
+    depends_on:
+      - mantisdb
+    ports:
+      - "8989:80"
+    environment:
+      MANTIS_DB_HOST: mantisdb
+      MANTIS_DB_NAME: mantisbt
+      MANTIS_DB_USER: mantis
+      MANTIS_DB_PASSWORD: mantis

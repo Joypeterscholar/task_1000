@@ -27,11 +27,11 @@
       ]}}]
     },
     {
-      "name": "3 — GET /api/books/1",
-      "request": { "method": "GET", "url": "{{base_url}}/api/books/1" },
+      "name": "3 — GET /api/books/2",
+      "request": { "method": "GET", "url": "{{base_url}}/api/books/2" },
       "event": [{ "listen": "test", "script": { "exec": [
         "pm.test('200', () => pm.response.to.have.status(200));",
-        "pm.test('id is 1', () => pm.expect(pm.response.json().data.id).to.eql('1'));"
+        "pm.test('id is 2', () => pm.expect(pm.response.json().data.id).to.eql('2'));"
       ]}}]
     },
     {
