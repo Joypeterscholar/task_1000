@@ -52,7 +52,7 @@ jobs:
       - name: Run Newman
         id: newman
         run: |
-          npm ci -g newman newman-reporter-htmlextra
+          npm install -g newman newman-reporter-htmlextra
           mkdir -p results
           newman run postman/simple-books.postman_collection.json \
             --env-var "base_url=http://localhost:${{ env.API_PORT }}" \
@@ -98,7 +98,7 @@ jobs:
           done
       - name: Cache JMeter
         uses: actions/cache@v4
-         with:
+        with:
          path: apache-jmeter-${{ env.JMETER_VERSION }}
          key: jmeter-${{ env.JMETER_VERSION }}
 
