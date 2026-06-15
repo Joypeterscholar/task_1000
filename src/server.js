@@ -76,8 +76,10 @@ app.delete("/api/books/:id", (req, res) => {
 });
 
 // ── START ────────────────────────────────────────────────────
-app.listen(PORT, () => {
-  console.log("Server running");
-});
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log("Server running");
+  });
+}
 
 module.exports = app;
