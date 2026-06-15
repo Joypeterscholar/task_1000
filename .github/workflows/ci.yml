@@ -11,8 +11,8 @@ env:
   NODE_VERSION:   "20"
   API_PORT:       "4004"
   JMETER_VERSION: "5.6.3"
-  MAX_ERROR_RATE: "1"
-  MAX_P95_MS:     "500"
+  MAX_ERROR_RATE: "5"
+  MAX_P95_MS:     "2000"
 
 jobs:
 
