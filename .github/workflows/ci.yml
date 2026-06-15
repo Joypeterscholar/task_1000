@@ -99,17 +99,17 @@ jobs:
       - name: Cache JMeter
         uses: actions/cache@v4
         with:
-         path: apache-jmeter-${{ env.JMETER_VERSION }}
-         key: jmeter-${{ env.JMETER_VERSION }}
+          path: apache-jmeter-${{ env.JMETER_VERSION }}
+          key: jmeter-${{ env.JMETER_VERSION }}
 
       - name: Install JMeter
-  run: |
-    if [ ! -d "apache-jmeter-${{ env.JMETER_VERSION }}" ]; then
-      wget https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-${{ env.JMETER_VERSION }}.tgz
-      tar -xzf apache-jmeter-${{ env.JMETER_VERSION }}.tgz
-    fi
+        run: |
+          if [ ! -d "apache-jmeter-${{ env.JMETER_VERSION }}" ]; then
+            wget https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-${{ env.JMETER_VERSION }}.tgz
+            tar -xzf apache-jmeter-${{ env.JMETER_VERSION }}.tgz
+          fi
 
-    echo "$GITHUB_WORKSPACE/apache-jmeter-${{ env.JMETER_VERSION }}/bin" >> $GITHUB_PATH
+          echo "$GITHUB_WORKSPACE/apache-jmeter-${{ env.JMETER_VERSION }}/bin" >> $GITHUB_PATH
       - name: Run JMeter
         run: |
           mkdir -p results/jmeter-html
